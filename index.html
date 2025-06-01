@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>句子重組遊戲</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+    #controls {
+      margin-bottom: 20px;
+    }
+    #message {
+      color: green;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>句子重組遊戲</h1>
+  <div id="controls">
+    <button id="startGameBtn">開始遊戲</button>
+    <button id="speakBtn" disabled>🔊 播放句子</button>
+    <button id="saveProgressBtn">保存進度</button>
+    <button id="loadProgressBtn">恢復進度</button>
+  </div>
+  <div id="message">請先按「開始遊戲」初始化音訊。</div>
+  <script>
+    let audioContext;
+    let initialized = false;
+    let gameState = {
+      level: 1,
+      score: 0,
+      progressNote: '開始遊戲'
+    };
+
+    function initAudio() {
+      if (!audioContext || audioContext.state === 'closed') {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log('AudioContext initialized.');
+      } else if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => console.log('AudioContext resumed.'));
+      } else {
+        console.log('AudioContext already running.');
+      }
+    }
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-TW';
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+    }
+
+    document.getElementById('startGameBtn').addEventListener('click', () => {
+      if (!initialized) {
+        initAudio();
+        initialized = true;
+        document.getElementById('speakBtn').disabled = false;
+        document.getElementById('message').textContent = '音訊初始化成功！請點擊「播放句子」。';
+      }
+    });
+
+    document.getElementById('speakBtn').addEventListener('click', () => {
+      if (initialized) {
+        speak('這是範例句子。');
+        gameState.score += 10;
+        gameState.progressNote = '已播放句子';
+        console.log('進度更新:', gameState);
+      }
+    });
+
+    document.getElementById('saveProgressBtn').addEventListener('click', () => {
+      localStorage.setItem('gameProgress', JSON.stringify(gameState));
+      document.getElementById('message').textContent = '遊戲進度已保存！';
+    });
+
+    document.getElementById('loadProgressBtn').addEventListener('click', () => {
+      const saved = localStorage.getItem('gameProgress');
+      if (saved) {
+        gameState = JSON.parse(saved);
+        document.getElementById('message').textContent = `遊戲進度已恢復！等級: ${gameState.level}, 分數: ${gameState.score}, 註記: ${gameState.progressNote}`;
+      } else {
+        document.getElementById('message').textContent = '沒有找到保存的進度。';
+      }
+    });
+  </script>
+</body>
+</html>
