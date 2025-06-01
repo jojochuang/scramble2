@@ -32,7 +32,6 @@
   <script>
     let audioContext;
     let initialized = false;
-    let speechInitialized = false;
     let gameState = {
       level: 1,
       score: 0,
@@ -50,21 +49,19 @@
       }
     }
 
-    function initSpeechSynthesis() {
-      if ('speechSynthesis' in window && !speechInitialized) {
-        const dummy = new SpeechSynthesisUtterance('');
-        dummy.lang = 'zh-TW';
-        window.speechSynthesis.speak(dummy);
-        speechInitialized = true;
-        console.log('SpeechSynthesis initialized with dummy utterance.');
-      }
-    }
-
     function speak(text) {
       if ('speechSynthesis' in window) {
+        // Add workaround for iOS Safari restrictions
+        const voices = window.speechSynthesis.getVoices();
         const u = new SpeechSynthesisUtterance(text);
         u.lang = 'zh-TW';
-        window.speechSynthesis.cancel(); // Stop any previous speech
+        if (voices.length > 0) {
+          u.voice = voices.find(v => v.lang === 'zh-TW') || voices[0];
+        }
+        u.rate = 1;
+        u.pitch = 1;
+        u.volume = 1;
+        window.speechSynthesis.cancel();
         window.speechSynthesis.speak(u);
       }
     }
@@ -72,10 +69,11 @@
     document.getElementById('startGameBtn').addEventListener('click', () => {
       if (!initialized) {
         initAudio();
-        initSpeechSynthesis();
+        // Preload voices (especially for iOS)
+        window.speechSynthesis.getVoices();
         initialized = true;
         document.getElementById('speakBtn').disabled = false;
-        document.getElementById('message').textContent = '音訊和語音初始化成功！請點擊「播放句子」。';
+        document.getElementById('message').textContent = '音訊初始化成功！請點擊「播放句子」。';
       }
     });
 
