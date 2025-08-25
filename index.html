@@ -1,52 +1,95 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+  <!-- Enable standalone (full-screen) mode on iOS -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- Status bar color (default / black-translucent / black) -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- App name when added to home screen -->
+<meta name="apple-mobile-web-app-title" content="句子重組遊戲">
+<!-- Specify an icon for home-screen -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>句子重組遊戲</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f9f9f9;
+    body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
+    .dropdown { position: relative; width: 150px; margin-right: 16px; }
+    .dropdown-toggle { padding: 8px; background: #007BFF; color: #fff; border-radius: 4px; cursor: pointer; }
+    .dropdown-menu { position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; z-index: 10; }
+    .dropdown-item { padding: 8px; cursor: pointer; }
+    .dropdown-item:hover { background: #f0f0f0; }
+    #controls { display: flex; align-items: center; margin-bottom: 16px; }
+    #chars { border: 2px dashed #007BFF; padding: 12px; min-height: 60px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+    #answer { border: 2px solid #28a745; padding: 12px; min-height: 60px; border-radius: 4px; background: #f1fdf4; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    #chars li, #answer li {
+      list-style: none;
+      padding: 16px 24px; /* double previous 8px 12px */
+      background: #007BFF;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 200%; /* enlarge text size */
     }
-    #controls {
-      margin-bottom: 20px;
-    }
-    #message {
-      color: green;
-      margin-top: 10px;
-    }
+    #stars { font-size: 1.5rem; color: gold; margin: 16px 0; }
+    #message { color: red; font-weight: bold; margin-top: 8px; }
+    #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; }
+    #pwdBtn { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
   </style>
 </head>
 <body>
-  <h1>句子重組遊戲</h1>
   <div id="controls">
-    <button id="startGameBtn">開始遊戲</button>
-    <button id="speakBtn" disabled>🔊 播放句子</button>
-    <button id="saveProgressBtn">保存進度</button>
-    <button id="loadProgressBtn">恢復進度</button>
+    <div id="mainDropdown" class="dropdown">
+      <div id="mainToggle" class="dropdown-toggle">選擇章節</div>
+      <div id="mainMenu" class="dropdown-menu"></div>
+    </div>
+    <div id="subDropdown" class="dropdown">
+      <div id="subToggle" class="dropdown-toggle">選擇單元</div>
+      <div id="subMenu" class="dropdown-menu"></div>
+    </div>
+    <input type="password" id="pwdInput" placeholder="教師請輸入密碼" />
+    <button id="pwdBtn">解鎖</button>
   </div>
-  <div id="message">請先按「開始遊戲」初始化音訊。</div>
-  <script>
-    let audioContext;
-    let initialized = false;
-    let gameState = {
-      level: 1,
-      score: 0,
-      progressNote: '開始遊戲'
-    };
 
-    function initAudio() {
-      if (!audioContext || audioContext.state === 'closed') {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        console.log('AudioContext initialized.');
-      } else if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => console.log('AudioContext resumed.'));
-      } else {
-        console.log('AudioContext already running.');
+  <button id="speakBtn">🔊 播放句子</button>
+  <div id="stars">☆ ☆ ☆ ☆ ☆</div>
+  <ul id="chars"></ul>
+  <div id="answer"></div>
+  <div id="message"></div>
+
+  <script>
+    const SHEET_ID = '1aVqFdHihHACMEmFScqDIoOzCIIFkXHHUleXvrLPm99Q';
+    let sentences = [], mainNames = [], subNames = [];
+    let unlockedUnits = Array.from({ length: 25 }, () => Array(20).fill(false));
+    unlockedUnits[0][0] = true;
+    let bypass = false;
+    let state = { m: 0, s: 0, q: 0, stars: [false, false, false, false, false] };
+    const bgColors = ['blue','green','orange','pink','red'];
+
+    const pwdInput = document.getElementById('pwdInput');
+    const pwdBtn = document.getElementById('pwdBtn');
+    const mainToggle = document.getElementById('mainToggle');
+    const mainMenu = document.getElementById('mainMenu');
+    const subToggle = document.getElementById('subToggle');
+    const subMenu = document.getElementById('subMenu');
+    const speakBtn = document.getElementById('speakBtn');
+    const charsEl = document.getElementById('chars');
+    const answerEl = document.getElementById('answer');
+    const starsEl = document.getElementById('stars');
+    const messageEl = document.getElementById('message');
+
+    function shuffle(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
       }
+      return a;
+    }
+
+    function updateStatus(message) {
+      console.log(message);
+      status.textContent = `Status: ${message}`;
     }
 
     function speak(text) {
@@ -54,51 +97,193 @@
         // Add workaround for iOS Safari restrictions
         const voices = window.speechSynthesis.getVoices();
         const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'zh-TW';
-        if (voices.length > 0) {
-          u.voice = voices.find(v => v.lang === 'zh-TW') || voices[0];
+        // 篩選出 zh-TW 語系
+        let zhVoices = voices.filter(v => v.lang === 'zh-TW');
+        // 尋找包含 Meija 或 美佳 的語音名稱
+        let preferredVoice = zhVoices.find(
+          v => v.name === "美佳 (zh-TW)" || v.name === "Meijia (zh-TW)"
+        );
+        if (!preferredVoice && zhVoices.length > 0) {
+          // 如果找不到偏好語音，選擇 zh-TW 語音中的第一個
+          preferredVoice = zhVoices[zhVoices.length - 1];
         }
-        u.rate = 1;
-        u.pitch = 1;
-        u.volume = 1;
+    
+        if (preferredVoice) {
+          u.voice = preferredVoice;
+        }
+        u.lang = 'zh-TW';
+        u.rate = 0.75;
+        
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(u);
       }
     }
 
-    document.getElementById('startGameBtn').addEventListener('click', () => {
-      if (!initialized) {
-        initAudio();
-        // Preload voices (especially for iOS)
-        window.speechSynthesis.getVoices();
-        initialized = true;
-        document.getElementById('speakBtn').disabled = false;
-        document.getElementById('message').textContent = '音訊初始化成功！請點擊「播放句子」。';
-      }
-    });
+    function renderStars() {
+      starsEl.textContent = state.stars.map(f => f ? '★' : '☆').join(' ');
+    }
 
-    document.getElementById('speakBtn').addEventListener('click', () => {
-      if (initialized) {
-        speak('這是範例句子。');
-        gameState.score += 10;
-        gameState.progressNote = '已播放句子';
-        console.log('進度更新:', gameState);
-      }
-    });
-
-    document.getElementById('saveProgressBtn').addEventListener('click', () => {
-      localStorage.setItem('gameProgress', JSON.stringify(gameState));
-      document.getElementById('message').textContent = '遊戲進度已保存！';
-    });
-
-    document.getElementById('loadProgressBtn').addEventListener('click', () => {
-      const saved = localStorage.getItem('gameProgress');
-      if (saved) {
-        gameState = JSON.parse(saved);
-        document.getElementById('message').textContent = `遊戲進度已恢復！等級: ${gameState.level}, 分數: ${gameState.score}, 註記: ${gameState.progressNote}`;
+    pwdBtn.onclick = () => {
+      if (pwdInput.value === 'CREC') {
+        bypass = true;
+        unlockedUnits = unlockedUnits.map(row => row.map(() => true));
+        saveState();
+        renderDropdowns();
+        renderQuestion();
       } else {
-        document.getElementById('message').textContent = '沒有找到保存的進度。';
+        alert('密碼錯誤');
       }
+      pwdInput.value = '';
+    };
+
+    function loadData() {
+      const saved = localStorage.getItem('unscrambleState');
+      if (saved) {
+        const obj = JSON.parse(saved);
+        state = obj.state;
+        unlockedUnits = obj.unlockedUnits;
+      }
+      fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`)
+        .then(r => r.text())
+        .then(text => {
+          const rows = text.trim().split('\n').map(r => r.split(','));
+          const cols = rows[0].length;
+          sentences = Array.from({ length: cols }, (_, c) => {
+            const col = rows.map(r => r[c].trim());
+            return Array.from({ length: 20 }, (_, u) => col.slice(u * 5, u * 5 + 5));
+          });
+          mainNames = sentences.map((_, i) =>
+            i < 5 ? `美洲華語一冊-${i+1}` :
+            i < 10 ? `萌芽級-${i-4}` :
+            i < 15 ? `躍進級-${i-9}` :
+            i < 20 ? `信心級-${i-14}` :
+            `實力級-${i-19}`
+          );
+          subNames = Array.from({ length: 20 }, (_, j) => `單元 ${j+1}`);
+          renderDropdowns();
+          renderQuestion();
+        });
+    }
+
+    function renderDropdowns() {
+      mainMenu.innerHTML = '';
+      subMenu.innerHTML = '';
+      const grp = Math.floor(state.m / 5);
+
+      mainNames.forEach((name, i) => {
+        const d = document.createElement('div');
+        d.textContent = name;
+        d.className = 'dropdown-item';
+        d.style.background = bgColors[Math.floor(i / 5)];
+        if (!bypass && !unlockedUnits[i][0] && i > state.m) {
+          d.style.opacity = 0.5;
+          d.style.pointerEvents = 'none';
+        }
+        d.onclick = () => {
+          state.m = i;
+          state.s = 0;
+          state.q = 0;
+          unlockedUnits[state.m][state.s] = true;
+          saveState();
+          closeMenus();
+          renderDropdowns();
+          renderQuestion();
+        };
+        mainMenu.appendChild(d);
+      });
+      mainToggle.textContent = mainNames[state.m];
+      mainToggle.style.background = bgColors[grp];
+      mainToggle.onclick = () => { mainMenu.style.display = 'block'; subMenu.style.display = 'none'; };
+
+      subNames.forEach((name, j) => {
+        const d = document.createElement('div');
+        d.textContent = name;
+        d.className = 'dropdown-item';
+        if (!bypass && !unlockedUnits[state.m][j]) {
+          d.style.opacity = 0.5;
+          d.style.pointerEvents = 'none';
+        }
+        d.onclick = () => {
+          state.s = j;
+          state.q = 0;
+          unlockedUnits[state.m][state.s] = true;
+          saveState();
+          closeMenus();
+          renderDropdowns();
+          renderQuestion();
+        };
+        subMenu.appendChild(d);
+      });
+      subToggle.textContent = subNames[state.s];
+      subToggle.style.background = bgColors[grp];
+      subToggle.onclick = () => { subMenu.style.display = 'block'; mainMenu.style.display = 'none'; };
+
+      document.addEventListener('click', e => {
+        if (!e.target.closest('.dropdown')) closeMenus();
+      });
+    }
+
+    function closeMenus() {
+      mainMenu.style.display = 'none';
+      subMenu.style.display = 'none';
+    }
+
+    function renderQuestion() {
+      answerEl.innerHTML = '';
+      messageEl.textContent = '';
+      renderStars();
+      charsEl.innerHTML = '';
+      const sentence = sentences[state.m][state.s][state.q];
+      shuffle(sentence.split('')).forEach(ch => {
+        const li = document.createElement('li');
+        li.textContent = ch;
+        li.onclick = () => {
+          if (li.parentNode === charsEl) answerEl.appendChild(li);
+          else charsEl.appendChild(li);
+          if (answerEl.children.length === sentence.length) checkAnswer();
+        };
+        charsEl.appendChild(li);
+      });
+      // 只在点击时播放
+      speakBtn.onclick = () => speak(sentence); speak(sentence)
+    }
+
+    function checkAnswer() {
+      const sentence = sentences[state.m][state.s][state.q];
+      const ans = Array.from(answerEl.children).map(el => el.textContent).join('');
+      if (ans === sentence) {
+        messageEl.textContent = '恭喜正確！';
+        state.stars[state.q] = true;
+        if (state.q === 4 && !bypass) unlockedUnits[state.m][state.s + 1] = true;
+        saveState();
+        renderStars();
+        setTimeout(() => {
+          messageEl.textContent = '';        
+          if (state.q < 4) state.q++;
+          else {
+            state.q = 0;
+            state.stars = [false,false,false,false,false];
+            state.s++;
+            if (state.s >= subNames.length) { state.s = 0; state.m++; }
+          }
+          closeMenus();
+          renderDropdowns();
+          renderQuestion();
+        }, 2000);
+      } else {
+        messageEl.textContent = '❌ 錯誤，請再試一次';
+        Array.from(answerEl.children).forEach(li => charsEl.appendChild(li));
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem('unscrambleState', JSON.stringify({ state, unlockedUnits }));
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      mainDropdown.style.display = 'block';
+      subDropdown.style.display = 'block';
+      loadData();
     });
   </script>
 </body>
