@@ -42,22 +42,58 @@
     .dropdown-item { padding: 8px; cursor: pointer; }
     .dropdown-item:hover { background: #f0f0f0; }
     #controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 0; margin-bottom: 16px; }
-    #chars { border: 2px dashed #007BFF; padding: 12px; min-height: 60px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
-    #answer { border: 2px solid #28a745; padding: 12px; min-height: 60px; border-radius: 4px; background: #f1fdf4; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    #chars {
+      border: 2px dashed #007BFF;
+      padding: 20px;
+      min-height: 22vh;
+      border-radius: 8px;
+      display: grid;
+      grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr));
+      gap: 14px 16px;
+      justify-items: stretch;
+      align-content: center;
+      margin: 12px 0;
+    }
+    #answer {
+      border: 2px solid #28a745;
+      padding: 16px;
+      min-height: 80px;
+      border-radius: 8px;
+      background: #f1fdf4;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      justify-content: center;
+    }
     #chars li, #answer li {
       list-style: none;
-      padding: 16px 24px;
+      padding: 0.3em 0.45em;
       background: #007BFF;
       color: #fff;
-      border-radius: 4px;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 200%;
+      text-align: center;
+      line-height: 1.15;
+      font-weight: 600;
+      user-select: none;
+    }
+    #chars li {
+      font-size: clamp(2.8rem, 6.2vw, 5.5rem);
+      min-height: 1.35em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #answer li {
+      font-size: clamp(2rem, 4.2vw, 3.6rem);
+      padding: 0.35em 0.5em;
     }
     #answer li.punct {
       background: transparent;
       color: #222;
       cursor: default;
-      padding: 16px 8px;
+      padding: 0.35em 0.2em;
       font-weight: 700;
     }
     #stars { font-size: 1.5rem; color: gold; margin: 16px 0; }
@@ -546,6 +582,12 @@
         li.onclick = pickChar;
         charsEl.appendChild(li);
       });
+
+      // 大螢幕：依字數排成約 2～3 行
+      const n = expectedChars.length;
+      const rows = n <= 4 ? 1 : n <= 10 ? 2 : 3;
+      const cols = Math.max(2, Math.ceil(n / rows));
+      charsEl.style.setProperty('--cols', String(cols));
 
       speakBtn.onclick = () => speak(sentence);
       speak(sentence);
