@@ -149,33 +149,29 @@
     #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; min-width: 140px; }
     #pwdBtn { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     #speakBtn { margin-bottom: 8px; }
+    #fsBtn {
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
 
-    /* 手機：控制列移到下方，遊戲區優先顯示 */
-    @media (max-width: 768px) {
+    /* 小螢幕：功能列放到下方（隨頁面捲動，不固定） */
+    @media (max-width: 768px), ((hover: none) and (pointer: coarse) and (max-width: 1024px)) {
       body {
         display: flex;
         flex-direction: column;
-        min-height: 100dvh;
-        min-height: 100svh;
         padding: 12px;
-        padding-bottom: 0;
         box-sizing: border-box;
       }
-      #gameMain {
-        order: 1;
-        flex: 1 1 auto;
-        min-height: 0;
-      }
+      #gameMain { order: 1; }
       #chrome {
         order: 2;
-        position: sticky;
-        bottom: 0;
-        z-index: 30;
-        margin: 0 -12px;
-        padding: 10px 12px max(12px, env(safe-area-inset-bottom));
-        background: #f9f9f9;
+        margin-top: 16px;
+        padding-top: 12px;
         border-top: 1px solid #ddd;
-        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
       }
       #controls {
         margin-bottom: 8px;
@@ -187,23 +183,20 @@
         max-width: none;
         margin-right: 0;
       }
-      #stars {
-        margin: 0;
-        flex: 0 0 auto;
-      }
+      #stars { margin: 0; flex: 0 0 auto; }
       #pwdInput {
         margin-left: 0;
         width: auto;
         min-width: 0;
         flex: 1 1 120px;
       }
-      #speakBtn {
+      #speakBtn, #fsBtn {
         width: 100%;
-        margin-bottom: 0;
+        margin-bottom: 8px;
         padding: 10px;
         font-size: 1.05rem;
       }
-      /* 選單在底部時改向上展開 */
+      #fsBtn { margin-bottom: 0; }
       .dropdown-menu {
         top: auto;
         bottom: 100%;
@@ -233,6 +226,7 @@
       <button id="pwdBtn">解鎖</button>
     </div>
     <button id="speakBtn">🔊 播放句子</button>
+    <button type="button" id="fsBtn">進入全螢幕</button>
   </div>
 
   <div id="gameMain">
@@ -242,6 +236,7 @@
   </div>
 
   <script>
+
     const SHEET_ID = '1aVqFdHihHACMEmFScqDIoOzCIIFkXHHUleXvrLPm99Q';
     const SHEETS = [
       { name: '美洲一', gid: '0' },
@@ -268,6 +263,7 @@
     const answerEl = document.getElementById('answer');
     const starsEl = document.getElementById('stars');
     const messageEl = document.getElementById('message');
+    const fsBtn = document.getElementById('fsBtn');
 
     function parseCSV(text) {
       const rows = [];
@@ -644,10 +640,46 @@
       if (landscape) {
         cols = Math.min(4, Math.max(1, n));
       } else {
-        const rows = n <= 4 ? 1 : n <= 10 ? 2 : 3;
-        cols = Math.max(1, Math.ceil(n / rows));
+        // 直式：一列最多 3 個字
+        cols = Math.min(3, Math.max(1, n));
       }
       charsEl.style.setProperty('--cols', String(cols));
+    }
+
+    function isFullscreen() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    function updateFsBtn() {
+      if (!fsBtn) return;
+      fsBtn.textContent = isFullscreen() ? '退出全螢幕' : '進入全螢幕';
+    }
+
+    async function toggleFullscreen() {
+      try {
+        if (isFullscreen()) {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          else if (document.msExitFullscreen) document.msExitFullscreen();
+        } else {
+          const el = document.documentElement;
+          if (el.requestFullscreen) await el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+          else if (el.msRequestFullscreen) el.msRequestFullscreen();
+          else {
+            alert('此瀏覽器不支援全螢幕，請用系統「加入主畫面」或旋轉成橫式。');
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+        alert('無法切換全螢幕，請確認瀏覽器權限。');
+      }
+      updateFsBtn();
     }
 
     function renderQuestion() {
@@ -821,6 +853,13 @@
       }
       pwdInput.value = '';
     };
+
+    if (fsBtn) {
+      fsBtn.onclick = () => toggleFullscreen();
+      document.addEventListener('fullscreenchange', updateFsBtn);
+      document.addEventListener('webkitfullscreenchange', updateFsBtn);
+      updateFsBtn();
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       loadSavedState();
