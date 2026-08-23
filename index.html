@@ -101,26 +101,42 @@
     }
     #chars li {
       position: relative;
-      font-size: clamp(4.2rem, 9.3vw, 8.25rem);
+      font-size: clamp(2.8rem, 6.2vw, 5.5rem);
       min-height: 1.35em;
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: visible;
+    }
+    #chars li .glyph {
+      display: inline-block;
+      transform: scale(1.5);
+      transform-origin: center center;
+      line-height: 1;
     }
     #chars li .num {
       position: absolute;
       top: 0.2em;
       left: 0.28em;
-      font-size: clamp(1.275rem, 2.4vw, 1.875rem);
+      font-size: clamp(0.85rem, 1.6vw, 1.25rem);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
       font-weight: 700;
       line-height: 1;
       opacity: 0.95;
       pointer-events: none;
+      transform: scale(1.5);
+      transform-origin: top left;
     }
     #answer li {
-      font-size: clamp(3rem, 6.3vw, 5.4rem);
+      font-size: clamp(2rem, 4.2vw, 3.6rem);
       padding: 0.35em 0.5em;
+      overflow: visible;
+    }
+    #answer li .glyph {
+      display: inline-block;
+      transform: scale(1.5);
+      transform-origin: center center;
+      line-height: 1;
     }
     #answer li.punct {
       background: transparent;
@@ -534,10 +550,21 @@
       const badge = document.createElement('span');
       badge.className = 'num';
       badge.textContent = String(num);
+      const glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      glyph.textContent = ch;
       li.appendChild(badge);
-      li.appendChild(document.createTextNode(ch));
+      li.appendChild(glyph);
       li.onclick = onClick;
       return li;
+    }
+
+    function fillCharTile(li, ch) {
+      li.textContent = '';
+      const glyph = document.createElement('span');
+      glyph.className = 'glyph';
+      glyph.textContent = ch;
+      li.appendChild(glyph);
     }
 
     function setCharGridCols(n) {
@@ -597,7 +624,7 @@
               li.className = 'char';
               li.dataset.ch = tile.ch;
               if (tile.num) li.dataset.num = String(tile.num);
-              li.textContent = tile.ch;
+              fillCharTile(li, tile.ch);
               const myIndex = pi;
               li.onclick = () => {
                 const cur = placedTilesFromAnswer();
@@ -659,7 +686,8 @@
         (parts || splitSentence(sentence)).forEach((p) => {
           const li = document.createElement('li');
           li.className = p.type === 'punct' ? 'punct' : 'char';
-          li.textContent = p.ch;
+          if (p.type === 'punct') li.textContent = p.ch;
+          else fillCharTile(li, p.ch);
           answerEl.appendChild(li);
         });
         messageEl.style.color = 'green';
