@@ -53,6 +53,13 @@
       cursor: pointer;
       font-size: 200%;
     }
+    #answer li.punct {
+      background: transparent;
+      color: #222;
+      cursor: default;
+      padding: 16px 8px;
+      font-weight: 700;
+    }
     #stars { font-size: 1.5rem; color: gold; margin: 16px 0; }
     #message { color: red; font-weight: bold; margin-top: 8px; }
     #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; min-width: 140px; }
@@ -370,6 +377,25 @@
       }
     }
 
+    function isPunct(ch) {
+      return /[，。！？、；：､,.!?;:“”‘’「」『』（）()【】《》〈〉…—～·\s]/.test(ch);
+    }
+
+    function splitSentence(sentence) {
+      return Array.from(String(sentence || '')).map((ch) => ({
+        type: isPunct(ch) ? 'punct' : 'char',
+        ch
+      }));
+    }
+
+    function charsOnly(parts) {
+      return parts.filter((p) => p.type === 'char').map((p) => p.ch).join('');
+    }
+
+    function placedCharsFromAnswer() {
+      return Array.from(answerEl.querySelectorAll('li.char')).map((el) => el.textContent);
+    }
+
     function renderQuestion() {
       answerEl.innerHTML = '';
       messageEl.textContent = '';
@@ -388,14 +414,83 @@
         return;
       }
 
-      shuffle(sentence.split('')).forEach((ch) => {
+      const parts = splitSentence(sentence);
+      const expectedChars = charsOnly(parts);
+      if (!expectedChars.length) {
+        messageEl.textContent = '此句只有標點，沒有可重組的字。';
+        speakBtn.onclick = () => speak(sentence);
+        return;
+      }
+
+      function renderAnswerFromPlaced(placed) {
+        answerEl.innerHTML = '';
+        let pi = 0;
+        let charsBefore = 0;
+        for (const p of parts) {
+          if (p.type === 'punct') {
+            if (placed.length >= charsBefore && charsBefore > 0) {
+              const li = document.createElement('li');
+              li.className = 'punct';
+              li.textContent = p.ch;
+              answerEl.appendChild(li);
+            }
+          } else {
+            if (pi < placed.length) {
+              const li = document.createElement('li');
+              li.className = 'char';
+              li.textContent = placed[pi];
+              const myIndex = pi;
+              li.onclick = () => {
+                const cur = placedCharsFromAnswer();
+                const keep = cur.slice(0, myIndex);
+                const removed = cur.slice(myIndex);
+                removed.forEach((ch) => {
+                  const back = document.createElement('li');
+                  back.className = 'char';
+                  back.textContent = ch;
+                  back.onclick = pickChar;
+                  charsEl.appendChild(back);
+                });
+                renderAnswerFromPlaced(keep);
+              };
+              answerEl.appendChild(li);
+              pi += 1;
+            }
+            charsBefore += 1;
+          }
+        }
+      }
+
+      function pickChar(e) {
+        const li = e.currentTarget;
+        if (li.parentNode !== charsEl) return;
+        const placed = placedCharsFromAnswer().concat([li.textContent]);
+        li.remove();
+        renderAnswerFromPlaced(placed);
+        if (placed.length === expectedChars.length) checkAnswer(parts, expectedChars);
+      }
+
+      function returnAllCharsToPool() {
+        const removed = placedCharsFromAnswer();
+        answerEl.innerHTML = '';
+        removed.forEach((ch) => {
+          const back = document.createElement('li');
+          back.className = 'char';
+          back.textContent = ch;
+          back.onclick = pickChar;
+          charsEl.appendChild(back);
+        });
+      }
+
+      // expose for wrong-answer reset
+      renderQuestion._returnAllCharsToPool = returnAllCharsToPool;
+      renderQuestion._pickChar = pickChar;
+
+      shuffle(expectedChars.split('')).forEach((ch) => {
         const li = document.createElement('li');
+        li.className = 'char';
         li.textContent = ch;
-        li.onclick = () => {
-          if (li.parentNode === charsEl) answerEl.appendChild(li);
-          else charsEl.appendChild(li);
-          if (answerEl.children.length === sentence.length) checkAnswer();
-        };
+        li.onclick = pickChar;
         charsEl.appendChild(li);
       });
 
@@ -403,12 +498,20 @@
       speak(sentence);
     }
 
-    function checkAnswer() {
+    function checkAnswer(parts, expectedChars) {
       const lesson = currentLesson();
       const sentence = lesson.sentences[state.q];
       if (!sentence) return;
-      const ans = Array.from(answerEl.children).map((el) => el.textContent).join('');
-      if (ans === sentence) {
+      const expected = expectedChars || charsOnly(splitSentence(sentence));
+      const ans = placedCharsFromAnswer().join('');
+      if (ans === expected) {
+        answerEl.innerHTML = '';
+        (parts || splitSentence(sentence)).forEach((p) => {
+          const li = document.createElement('li');
+          li.className = p.type === 'punct' ? 'punct' : 'char';
+          li.textContent = p.ch;
+          answerEl.appendChild(li);
+        });
         messageEl.style.color = 'green';
         messageEl.textContent = '恭喜正確！';
         state.stars[state.q] = true;
@@ -439,7 +542,18 @@
       } else {
         messageEl.style.color = 'red';
         messageEl.textContent = '❌ 錯誤，請再試一次';
-        Array.from(answerEl.children).forEach((li) => charsEl.appendChild(li));
+        if (typeof renderQuestion._returnAllCharsToPool === 'function') {
+          renderQuestion._returnAllCharsToPool();
+        } else {
+          Array.from(answerEl.querySelectorAll('li.char')).forEach((li) => {
+            const back = document.createElement('li');
+            back.className = 'char';
+            back.textContent = li.textContent;
+            back.onclick = renderQuestion._pickChar;
+            charsEl.appendChild(back);
+          });
+          answerEl.innerHTML = '';
+        }
       }
     }
 
