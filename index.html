@@ -14,37 +14,59 @@
   <title>句子重組遊戲</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
-    .dropdown { position: relative; width: 150px; margin-right: 16px; }
-    .dropdown-toggle { padding: 8px; background: #007BFF; color: #fff; border-radius: 4px; cursor: pointer; }
-    .dropdown-menu { position: absolute; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 4px; display: none; z-index: 10; }
-    .dropdown-item { padding: 8px; cursor: pointer; }
-    .dropdown-item:hover { background: #f0f0f0; }
-    #controls { display: flex; align-items: center; margin-bottom: 16px; }
-    #chars { border: 2px dashed #007BFF; padding: 12px; min-height: 60px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
-    #answer { border: 2px solid #28a745; padding: 12px; min-height: 60px; border-radius: 4px; background: #f1fdf4; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-    #chars li, #answer li {
-      list-style: none;
-      padding: 16px 24px; /* double previous 8px 12px */
+    .dropdown { position: relative; min-width: 160px; max-width: 280px; margin-right: 16px; }
+    .dropdown-toggle {
+      padding: 8px 12px;
       background: #007BFF;
       color: #fff;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 200%; /* enlarge text size */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dropdown-menu {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      min-width: 100%;
+      max-height: 240px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      display: none;
+      z-index: 10;
+    }
+    .dropdown-item { padding: 8px; cursor: pointer; }
+    .dropdown-item:hover { background: #f0f0f0; }
+    #controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 0; margin-bottom: 16px; }
+    #chars { border: 2px dashed #007BFF; padding: 12px; min-height: 60px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+    #answer { border: 2px solid #28a745; padding: 12px; min-height: 60px; border-radius: 4px; background: #f1fdf4; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    #chars li, #answer li {
+      list-style: none;
+      padding: 16px 24px;
+      background: #007BFF;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 200%;
     }
     #stars { font-size: 1.5rem; color: gold; margin: 16px 0; }
     #message { color: red; font-weight: bold; margin-top: 8px; }
-    #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; }
+    #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; min-width: 140px; }
     #pwdBtn { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
   </style>
 </head>
 <body>
   <div id="controls">
     <div id="mainDropdown" class="dropdown">
-      <div id="mainToggle" class="dropdown-toggle">選擇章節</div>
+      <div id="mainToggle" class="dropdown-toggle">選擇分頁</div>
       <div id="mainMenu" class="dropdown-menu"></div>
     </div>
     <div id="subDropdown" class="dropdown">
-      <div id="subToggle" class="dropdown-toggle">選擇單元</div>
+      <div id="subToggle" class="dropdown-toggle">選擇課文</div>
       <div id="subMenu" class="dropdown-menu"></div>
     </div>
     <input type="password" id="pwdInput" placeholder="教師請輸入密碼" />
@@ -52,19 +74,26 @@
   </div>
 
   <button id="speakBtn">🔊 播放句子</button>
-  <div id="stars">☆ ☆ ☆ ☆ ☆</div>
+  <div id="stars">☆</div>
   <ul id="chars"></ul>
   <div id="answer"></div>
   <div id="message"></div>
 
   <script>
     const SHEET_ID = '1aVqFdHihHACMEmFScqDIoOzCIIFkXHHUleXvrLPm99Q';
-    let sentences = [], mainNames = [], subNames = [];
-    let unlockedUnits = Array.from({ length: 25 }, () => Array(20).fill(false));
-    unlockedUnits[0][0] = true;
+    const SHEETS = [
+      { name: '美洲一', gid: '0' },
+      { name: '美洲二', gid: '779816915' }
+    ];
+    const bgColors = ['#007BFF', '#28a745', '#fd7e14', '#e83e8c', '#dc3545'];
+
+    /** @type {{ title: string, sentences: string[] }[]} */
+    let lessons = [];
+    /** unlockedLessons[sheetIndex][lessonIndex] */
+    let unlockedLessons = SHEETS.map(() => []);
     let bypass = false;
-    let state = { m: 0, s: 0, q: 0, stars: [false, false, false, false, false] };
-    const bgColors = ['blue','green','orange','pink','red'];
+    let state = { m: 0, s: 0, q: 0, stars: [] };
+    let menuClickBound = false;
 
     const pwdInput = document.getElementById('pwdInput');
     const pwdBtn = document.getElementById('pwdBtn');
@@ -78,6 +107,48 @@
     const starsEl = document.getElementById('stars');
     const messageEl = document.getElementById('message');
 
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let cur = '';
+      let inQuotes = false;
+      const src = String(text || '').replace(/^\uFEFF/, '');
+      for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (inQuotes) {
+          if (ch === '"') {
+            if (src[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else {
+              inQuotes = false;
+            }
+          } else {
+            cur += ch;
+          }
+        } else if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          row.push(cur);
+          cur = '';
+        } else if (ch === '\n') {
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = '';
+        } else if (ch === '\r') {
+          // skip
+        } else {
+          cur += ch;
+        }
+      }
+      if (cur.length || row.length) {
+        row.push(cur);
+        rows.push(row);
+      }
+      return rows;
+    }
+
     function shuffle(arr) {
       const a = arr.slice();
       for (let i = a.length - 1; i > 0; i--) {
@@ -87,140 +158,53 @@
       return a;
     }
 
-    function updateStatus(message) {
-      console.log(message);
-      status.textContent = `Status: ${message}`;
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      const voices = window.speechSynthesis.getVoices();
+      const u = new SpeechSynthesisUtterance(text);
+      const zhVoices = voices.filter(v => v.lang === 'zh-TW');
+      let preferredVoice = zhVoices.find(
+        v => v.name === '美佳 (zh-TW)' || v.name === 'Meijia (zh-TW)'
+      );
+      if (!preferredVoice && zhVoices.length > 0) {
+        preferredVoice = zhVoices[zhVoices.length - 1];
+      }
+      if (preferredVoice) u.voice = preferredVoice;
+      u.lang = 'zh-TW';
+      u.rate = 0.75;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
     }
 
-    function speak(text) {
-      if ('speechSynthesis' in window) {
-        // Add workaround for iOS Safari restrictions
-        const voices = window.speechSynthesis.getVoices();
-        const u = new SpeechSynthesisUtterance(text);
-        // 篩選出 zh-TW 語系
-        let zhVoices = voices.filter(v => v.lang === 'zh-TW');
-        // 尋找包含 Meija 或 美佳 的語音名稱
-        let preferredVoice = zhVoices.find(
-          v => v.name === "美佳 (zh-TW)" || v.name === "Meijia (zh-TW)"
-        );
-        if (!preferredVoice && zhVoices.length > 0) {
-          // 如果找不到偏好語音，選擇 zh-TW 語音中的第一個
-          preferredVoice = zhVoices[zhVoices.length - 1];
-        }
-    
-        if (preferredVoice) {
-          u.voice = preferredVoice;
-        }
-        u.lang = 'zh-TW';
-        u.rate = 0.75;
-        
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
+    function currentLesson() {
+      return lessons[state.s] || { title: '', sentences: [] };
+    }
+
+    function ensureUnlockGrid() {
+      while (unlockedLessons.length < SHEETS.length) unlockedLessons.push([]);
+      for (let m = 0; m < SHEETS.length; m++) {
+        if (!Array.isArray(unlockedLessons[m])) unlockedLessons[m] = [];
       }
+    }
+
+    function ensureLessonUnlocks(count) {
+      ensureUnlockGrid();
+      const row = unlockedLessons[state.m];
+      while (row.length < count) row.push(false);
+      if (row.length && !row.some(Boolean)) row[0] = true;
+    }
+
+    function resetStarsForLesson() {
+      const n = currentLesson().sentences.length;
+      state.stars = Array.from({ length: n }, (_, i) => !!(state.stars && state.stars[i]));
+      while (state.stars.length < n) state.stars.push(false);
+      if (state.stars.length > n) state.stars.length = n;
     }
 
     function renderStars() {
-      starsEl.textContent = state.stars.map(f => f ? '★' : '☆').join(' ');
-    }
-
-    pwdBtn.onclick = () => {
-      if (pwdInput.value === 'CREC') {
-        bypass = true;
-        unlockedUnits = unlockedUnits.map(row => row.map(() => true));
-        saveState();
-        renderDropdowns();
-        renderQuestion();
-      } else {
-        alert('密碼錯誤');
-      }
-      pwdInput.value = '';
-    };
-
-    function loadData() {
-      const saved = localStorage.getItem('unscrambleState');
-      if (saved) {
-        const obj = JSON.parse(saved);
-        state = obj.state;
-        unlockedUnits = obj.unlockedUnits;
-      }
-      fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`)
-        .then(r => r.text())
-        .then(text => {
-          const rows = text.trim().split('\n').map(r => r.split(','));
-          const cols = rows[0].length;
-          sentences = Array.from({ length: cols }, (_, c) => {
-            const col = rows.map(r => r[c].trim());
-            return Array.from({ length: 20 }, (_, u) => col.slice(u * 5, u * 5 + 5));
-          });
-          mainNames = sentences.map((_, i) =>
-            i < 5 ? `美洲華語一冊-${i+1}` :
-            i < 10 ? `萌芽級-${i-4}` :
-            i < 15 ? `躍進級-${i-9}` :
-            i < 20 ? `信心級-${i-14}` :
-            `實力級-${i-19}`
-          );
-          subNames = Array.from({ length: 20 }, (_, j) => `單元 ${j+1}`);
-          renderDropdowns();
-          renderQuestion();
-        });
-    }
-
-    function renderDropdowns() {
-      mainMenu.innerHTML = '';
-      subMenu.innerHTML = '';
-      const grp = Math.floor(state.m / 5);
-
-      mainNames.forEach((name, i) => {
-        const d = document.createElement('div');
-        d.textContent = name;
-        d.className = 'dropdown-item';
-        d.style.background = bgColors[Math.floor(i / 5)];
-        if (!bypass && !unlockedUnits[i][0] && i > state.m) {
-          d.style.opacity = 0.5;
-          d.style.pointerEvents = 'none';
-        }
-        d.onclick = () => {
-          state.m = i;
-          state.s = 0;
-          state.q = 0;
-          unlockedUnits[state.m][state.s] = true;
-          saveState();
-          closeMenus();
-          renderDropdowns();
-          renderQuestion();
-        };
-        mainMenu.appendChild(d);
-      });
-      mainToggle.textContent = mainNames[state.m];
-      mainToggle.style.background = bgColors[grp];
-      mainToggle.onclick = () => { mainMenu.style.display = 'block'; subMenu.style.display = 'none'; };
-
-      subNames.forEach((name, j) => {
-        const d = document.createElement('div');
-        d.textContent = name;
-        d.className = 'dropdown-item';
-        if (!bypass && !unlockedUnits[state.m][j]) {
-          d.style.opacity = 0.5;
-          d.style.pointerEvents = 'none';
-        }
-        d.onclick = () => {
-          state.s = j;
-          state.q = 0;
-          unlockedUnits[state.m][state.s] = true;
-          saveState();
-          closeMenus();
-          renderDropdowns();
-          renderQuestion();
-        };
-        subMenu.appendChild(d);
-      });
-      subToggle.textContent = subNames[state.s];
-      subToggle.style.background = bgColors[grp];
-      subToggle.onclick = () => { subMenu.style.display = 'block'; mainMenu.style.display = 'none'; };
-
-      document.addEventListener('click', e => {
-        if (!e.target.closest('.dropdown')) closeMenus();
-      });
+      const n = Math.max(1, currentLesson().sentences.length);
+      if (!state.stars.length) state.stars = Array(n).fill(false);
+      starsEl.textContent = state.stars.map(f => (f ? '★' : '☆')).join(' ');
     }
 
     function closeMenus() {
@@ -228,13 +212,183 @@
       subMenu.style.display = 'none';
     }
 
+    function saveState() {
+      localStorage.setItem(
+        'unscrambleState_v2',
+        JSON.stringify({ state, unlockedLessons, bypass })
+      );
+    }
+
+    function loadSavedState() {
+      const saved = localStorage.getItem('unscrambleState_v2');
+      if (!saved) return;
+      try {
+        const obj = JSON.parse(saved);
+        if (obj.state) state = Object.assign({ m: 0, s: 0, q: 0, stars: [] }, obj.state);
+        if (Array.isArray(obj.unlockedLessons)) unlockedLessons = obj.unlockedLessons;
+        if (obj.bypass) bypass = true;
+      } catch (_) {}
+      ensureUnlockGrid();
+      if (state.m < 0 || state.m >= SHEETS.length) state.m = 0;
+    }
+
+    function sheetCsvUrl(gid) {
+      return (
+        'https://docs.google.com/spreadsheets/d/' +
+        encodeURIComponent(SHEET_ID) +
+        '/export?format=csv&gid=' +
+        encodeURIComponent(gid || '0')
+      );
+    }
+
+    /** 欄 = 一課：第 1 列課名，第 2 列起句子 */
+    function buildLessonsFromRows(rows) {
+      if (!rows.length) return [];
+      const colCount = rows.reduce((max, r) => Math.max(max, r.length), 0);
+      const out = [];
+      for (let c = 0; c < colCount; c++) {
+        const title = String((rows[0] && rows[0][c]) || '').trim();
+        const sentences = [];
+        for (let r = 1; r < rows.length; r++) {
+          const cell = String((rows[r] && rows[r][c]) || '').trim();
+          if (cell) sentences.push(cell);
+        }
+        if (!title && !sentences.length) continue;
+        out.push({
+          title: title || ('課文 ' + (out.length + 1)),
+          sentences
+        });
+      }
+      return out;
+    }
+
+    async function loadSheet(sheetIndex, keepLessonIndex) {
+      const sheet = SHEETS[sheetIndex];
+      if (!sheet) return;
+      messageEl.textContent = '載入中…';
+      messageEl.style.color = '#666';
+      try {
+        const resp = await fetch(sheetCsvUrl(sheet.gid), { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const text = await resp.text();
+        const rows = parseCSV(text);
+        lessons = buildLessonsFromRows(rows);
+        ensureLessonUnlocks(lessons.length);
+
+        state.m = sheetIndex;
+        if (typeof keepLessonIndex === 'number' && keepLessonIndex >= 0 && keepLessonIndex < lessons.length) {
+          state.s = keepLessonIndex;
+        } else if (state.s >= lessons.length) {
+          state.s = 0;
+        }
+        if (!bypass && !unlockedLessons[state.m][state.s]) {
+          const firstOpen = unlockedLessons[state.m].findIndex(Boolean);
+          state.s = firstOpen >= 0 ? firstOpen : 0;
+          unlockedLessons[state.m][state.s] = true;
+        }
+        state.q = Math.min(state.q || 0, Math.max(0, currentLesson().sentences.length - 1));
+        resetStarsForLesson();
+        saveState();
+        messageEl.textContent = '';
+        messageEl.style.color = 'red';
+        renderDropdowns();
+        renderQuestion();
+      } catch (e) {
+        console.error(e);
+        messageEl.style.color = 'red';
+        messageEl.textContent = '試算表載入失敗：請確認已設為「知道連結的任何人可檢視」。';
+        lessons = [];
+        renderDropdowns();
+      }
+    }
+
+    function renderDropdowns() {
+      mainMenu.innerHTML = '';
+      subMenu.innerHTML = '';
+
+      SHEETS.forEach((sheet, i) => {
+        const d = document.createElement('div');
+        d.textContent = sheet.name;
+        d.className = 'dropdown-item';
+        d.style.background = bgColors[i % bgColors.length];
+        d.style.color = '#fff';
+        d.onclick = () => {
+          state.m = i;
+          state.s = 0;
+          state.q = 0;
+          state.stars = [];
+          saveState();
+          closeMenus();
+          loadSheet(i, 0);
+        };
+        mainMenu.appendChild(d);
+      });
+      mainToggle.textContent = SHEETS[state.m] ? SHEETS[state.m].name : '選擇分頁';
+      mainToggle.style.background = bgColors[state.m % bgColors.length];
+      mainToggle.onclick = (e) => {
+        e.stopPropagation();
+        const open = mainMenu.style.display === 'block';
+        closeMenus();
+        mainMenu.style.display = open ? 'none' : 'block';
+      };
+
+      lessons.forEach((lesson, j) => {
+        const d = document.createElement('div');
+        d.textContent = lesson.title;
+        d.className = 'dropdown-item';
+        const locked = !bypass && !unlockedLessons[state.m][j];
+        if (locked) {
+          d.style.opacity = 0.45;
+          d.style.pointerEvents = 'none';
+        }
+        d.onclick = () => {
+          state.s = j;
+          state.q = 0;
+          unlockedLessons[state.m][state.s] = true;
+          resetStarsForLesson();
+          saveState();
+          closeMenus();
+          renderDropdowns();
+          renderQuestion();
+        };
+        subMenu.appendChild(d);
+      });
+      subToggle.textContent = currentLesson().title || '選擇課文';
+      subToggle.style.background = bgColors[state.m % bgColors.length];
+      subToggle.onclick = (e) => {
+        e.stopPropagation();
+        const open = subMenu.style.display === 'block';
+        closeMenus();
+        subMenu.style.display = open ? 'none' : 'block';
+      };
+
+      if (!menuClickBound) {
+        menuClickBound = true;
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('.dropdown')) closeMenus();
+        });
+      }
+    }
+
     function renderQuestion() {
       answerEl.innerHTML = '';
       messageEl.textContent = '';
-      renderStars();
+      messageEl.style.color = 'red';
       charsEl.innerHTML = '';
-      const sentence = sentences[state.m][state.s][state.q];
-      shuffle(sentence.split('')).forEach(ch => {
+      resetStarsForLesson();
+      renderStars();
+
+      const lesson = currentLesson();
+      const sentence = lesson.sentences[state.q];
+      if (!sentence) {
+        messageEl.textContent = lesson.sentences.length
+          ? '此課沒有更多句子。'
+          : '此課沒有句子（請在試算表第 2 列起填入）。';
+        speakBtn.onclick = null;
+        return;
+      }
+
+      shuffle(sentence.split('')).forEach((ch) => {
         const li = document.createElement('li');
         li.textContent = ch;
         li.onclick = () => {
@@ -244,46 +398,71 @@
         };
         charsEl.appendChild(li);
       });
-      // 只在点击时播放
-      speakBtn.onclick = () => speak(sentence); speak(sentence)
+
+      speakBtn.onclick = () => speak(sentence);
+      speak(sentence);
     }
 
     function checkAnswer() {
-      const sentence = sentences[state.m][state.s][state.q];
-      const ans = Array.from(answerEl.children).map(el => el.textContent).join('');
+      const lesson = currentLesson();
+      const sentence = lesson.sentences[state.q];
+      if (!sentence) return;
+      const ans = Array.from(answerEl.children).map((el) => el.textContent).join('');
       if (ans === sentence) {
+        messageEl.style.color = 'green';
         messageEl.textContent = '恭喜正確！';
         state.stars[state.q] = true;
-        if (state.q === 4 && !bypass) unlockedUnits[state.m][state.s + 1] = true;
+        const lastQ = lesson.sentences.length - 1;
+        if (state.q === lastQ && !bypass) {
+          if (state.s + 1 < lessons.length) unlockedLessons[state.m][state.s + 1] = true;
+        }
         saveState();
         renderStars();
         setTimeout(() => {
-          messageEl.textContent = '';        
-          if (state.q < 4) state.q++;
-          else {
+          messageEl.textContent = '';
+          if (state.q < lastQ) {
+            state.q++;
+          } else {
             state.q = 0;
-            state.stars = [false,false,false,false,false];
-            state.s++;
-            if (state.s >= subNames.length) { state.s = 0; state.m++; }
+            state.stars = [];
+            if (state.s + 1 < lessons.length) {
+              state.s++;
+              unlockedLessons[state.m][state.s] = true;
+            }
+            resetStarsForLesson();
           }
+          saveState();
           closeMenus();
           renderDropdowns();
           renderQuestion();
         }, 2000);
       } else {
+        messageEl.style.color = 'red';
         messageEl.textContent = '❌ 錯誤，請再試一次';
-        Array.from(answerEl.children).forEach(li => charsEl.appendChild(li));
+        Array.from(answerEl.children).forEach((li) => charsEl.appendChild(li));
       }
     }
 
-    function saveState() {
-      localStorage.setItem('unscrambleState', JSON.stringify({ state, unlockedUnits }));
-    }
+    pwdBtn.onclick = () => {
+      if (pwdInput.value === 'CREC') {
+        bypass = true;
+        ensureUnlockGrid();
+        unlockedLessons = unlockedLessons.map((row, m) => {
+          const n = m === state.m ? Math.max(row.length, lessons.length, 1) : Math.max(row.length, 1);
+          return Array.from({ length: n }, () => true);
+        });
+        saveState();
+        renderDropdowns();
+        renderQuestion();
+      } else {
+        alert('密碼錯誤');
+      }
+      pwdInput.value = '';
+    };
 
     window.addEventListener('DOMContentLoaded', () => {
-      mainDropdown.style.display = 'block';
-      subDropdown.style.display = 'block';
-      loadData();
+      loadSavedState();
+      loadSheet(state.m, state.s);
     });
   </script>
 </body>
