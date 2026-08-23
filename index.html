@@ -855,6 +855,66 @@
       speak(sentence);
     }
 
+    let feedbackFxTimer = null;
+    let advanceTimer = null;
+
+    function showThumbsUp() {
+      const el = document.getElementById('feedbackFx');
+      if (!el) return;
+      el.textContent = '👍';
+      el.className = 'feedback-fx feedback-fx--ok';
+      el.setAttribute('aria-hidden', 'false');
+      if (feedbackFxTimer) clearTimeout(feedbackFxTimer);
+      feedbackFxTimer = setTimeout(() => {
+        el.classList.add('hidden');
+        el.setAttribute('aria-hidden', 'true');
+        feedbackFxTimer = null;
+      }, 900);
+    }
+
+    function showLessonCompleteBanner() {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('lessonCompleteOverlay');
+        if (!overlay) {
+          resolve();
+          return;
+        }
+        // restart animation
+        const banner = overlay.querySelector('.lesson-complete__banner');
+        if (banner) {
+          banner.style.animation = 'none';
+          void banner.offsetWidth;
+          banner.style.animation = '';
+        }
+        overlay.classList.remove('hidden');
+        try { speak('你做到了！'); } catch (_) {}
+        setTimeout(() => {
+          overlay.classList.add('hidden');
+          resolve();
+        }, 2800);
+      });
+    }
+
+    function advanceAfterCorrect(lastQ) {
+      messageEl.textContent = '';
+      if (state.q < lastQ) {
+        state.q++;
+      } else {
+        state.q = 0;
+        state.stars = [];
+        if (state.s + 1 < lessons.length) {
+          state.s++;
+          unlockedLessons[state.m][state.s] = true;
+        }
+        resetStarsForLesson();
+      }
+      saveState();
+      syncDeepLinkUrl();
+      closeMenus();
+      renderDropdowns();
+      renderQuestion();
+    }
+
     function checkAnswer(parts, expectedChars) {
       const lesson = currentLesson();
       const sentence = lesson.sentences[state.q];
@@ -874,30 +934,22 @@
         messageEl.textContent = '恭喜正確！';
         state.stars[state.q] = true;
         const lastQ = lesson.sentences.length - 1;
-        if (state.q === lastQ && !bypass) {
+        const lessonDone = state.q === lastQ;
+        if (lessonDone && !bypass) {
           if (state.s + 1 < lessons.length) unlockedLessons[state.m][state.s + 1] = true;
         }
         saveState();
         renderStars();
-        setTimeout(() => {
-          messageEl.textContent = '';
-          if (state.q < lastQ) {
-            state.q++;
-          } else {
-            state.q = 0;
-            state.stars = [];
-            if (state.s + 1 < lessons.length) {
-              state.s++;
-              unlockedLessons[state.m][state.s] = true;
-            }
-            resetStarsForLesson();
-          }
-          saveState();
-          syncDeepLinkUrl();
-          closeMenus();
-          renderDropdowns();
-          renderQuestion();
-        }, 2000);
+        showThumbsUp();
+        if (advanceTimer) clearTimeout(advanceTimer);
+        if (lessonDone) {
+          advanceTimer = setTimeout(async () => {
+            await showLessonCompleteBanner();
+            advanceAfterCorrect(lastQ);
+          }, 1000);
+        } else {
+          advanceTimer = setTimeout(() => advanceAfterCorrect(lastQ), 1600);
+        }
       } else {
         messageEl.style.color = 'red';
         messageEl.textContent = '❌ 錯誤，請再試一次';
