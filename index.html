@@ -108,6 +108,14 @@
       justify-content: center;
       overflow: visible;
     }
+    #chars li.word {
+      font-size: clamp(1.6rem, 4.2vw, 3.2rem);
+      padding-left: 0.55em;
+      padding-right: 0.55em;
+    }
+    #chars li.word .num {
+      transform: scale(1.6);
+    }
     #chars li .glyph {
       display: inline-block;
       transform: scale(1.5);
@@ -131,6 +139,11 @@
       font-size: clamp(2rem, 4.2vw, 3.6rem);
       padding: 0.35em 0.5em;
       overflow: visible;
+    }
+    #answer li.word {
+      font-size: clamp(1.4rem, 3.6vw, 2.8rem);
+      padding-left: 0.45em;
+      padding-right: 0.45em;
     }
     #answer li .glyph {
       display: inline-block;
@@ -393,23 +406,147 @@
       return a;
     }
 
-    function speak(text) {
+    const isIPhone = /iPhone|iPod/.test(navigator.userAgent);
+    const isIOS =
+      isIPhone ||
+      /iPad/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let speechUnlocked = !isIPhone; // iPad／桌機允許自動播；iPhone 需先點一下解鎖
+    let pendingSpeakText = '';
+    let speakTimer = null;
+
+    function unlockSpeech() {
       if (!('speechSynthesis' in window)) return;
-      const voices = window.speechSynthesis.getVoices();
-      const u = new SpeechSynthesisUtterance(text);
-      const zhVoices = voices.filter(v => v.lang === 'zh-TW');
-      let preferredVoice = zhVoices.find(
-        v => v.name === '美佳 (zh-TW)' || v.name === 'Meijia (zh-TW)'
-      );
-      if (!preferredVoice && zhVoices.length > 0) {
-        preferredVoice = zhVoices[zhVoices.length - 1];
+      try {
+        const syn = window.speechSynthesis;
+        if (typeof syn.resume === 'function') syn.resume();
+        // 在使用者手勢內「喚醒」語音引擎（iPhone Safari 必要）
+        const warm = new SpeechSynthesisUtterance('\u00A0');
+        warm.volume = 0;
+        warm.rate = 2;
+        warm.lang = 'zh-TW';
+        syn.speak(warm);
+        speechUnlocked = true;
+      } catch (_) {
+        speechUnlocked = true;
       }
-      if (preferredVoice) u.voice = preferredVoice;
-      u.lang = 'zh-TW';
-      u.rate = 0.75;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
+      try {
+        window.speechSynthesis.getVoices();
+      } catch (_) {}
     }
+
+    function pickZhVoice() {
+      if (!('speechSynthesis' in window)) return null;
+      const voices = window.speechSynthesis.getVoices() || [];
+      const zh = voices.filter((v) => /^zh(-|_|$)/i.test(v.lang) || /中文|國語|台|TW|HK|CN/i.test(v.name));
+      const tw = zh.filter((v) => /zh-TW|TW|台灣|美佳|Meijia|Tingting|Sinji/i.test(v.lang + v.name));
+      return (
+        tw.find((v) => /美佳|Meijia/i.test(v.name)) ||
+        tw[tw.length - 1] ||
+        zh[zh.length - 1] ||
+        null
+      );
+    }
+
+    function speakNow(text) {
+      if (!('speechSynthesis' in window)) return;
+      const t = String(text || '').trim();
+      if (!t) return;
+      const syn = window.speechSynthesis;
+      try {
+        if (typeof syn.resume === 'function') syn.resume();
+        const u = new SpeechSynthesisUtterance(t);
+        u.lang = 'zh-TW';
+        u.rate = 0.75;
+        const voice = pickZhVoice();
+        if (voice) u.voice = voice;
+        u.onerror = () => {
+          setTimeout(() => {
+            try {
+              if (typeof syn.resume === 'function') syn.resume();
+              const u2 = new SpeechSynthesisUtterance(t);
+              u2.lang = 'zh-TW';
+              u2.rate = 0.75;
+              const v2 = pickZhVoice();
+              if (v2) u2.voice = v2;
+              syn.speak(u2);
+            } catch (_) {}
+          }, 180);
+        };
+        syn.speak(u);
+      } catch (_) {}
+    }
+
+    function speak(text, opts) {
+      if (!('speechSynthesis' in window)) return;
+      const t = String(text || '').trim();
+      if (!t) return;
+      const force = !!(opts && opts.force);
+      // iPhone：未解鎖前不自動播，改等第一次點擊
+      if (isIPhone && !speechUnlocked && !force) {
+        pendingSpeakText = t;
+        return;
+      }
+      const syn = window.speechSynthesis;
+      if (speakTimer) {
+        clearTimeout(speakTimer);
+        speakTimer = null;
+      }
+      try {
+        syn.cancel();
+        if (typeof syn.resume === 'function') syn.resume();
+      } catch (_) {}
+
+      // force（按鈕／手勢）盡量同步播放；自動播放稍延遲以避免 cancel 衝突
+      const delay = force ? (isIOS ? 60 : 0) : isIOS ? 140 : 40;
+      speakTimer = setTimeout(() => speakNow(t), delay);
+    }
+
+    function speakFromUserGesture(text) {
+      unlockSpeech();
+      pendingSpeakText = '';
+      if (speakTimer) {
+        clearTimeout(speakTimer);
+        speakTimer = null;
+      }
+      try {
+        window.speechSynthesis.cancel();
+      } catch (_) {}
+      // 必須在手勢呼叫堆疊內直接 speak，setTimeout 在 iPhone 會被擋
+      speakNow(text);
+    }
+
+    function bindSpeechUnlockOnce() {
+      if (!isIPhone) return;
+      const unlock = () => {
+        unlockSpeech();
+        if (pendingSpeakText) {
+          const t = pendingSpeakText;
+          pendingSpeakText = '';
+          // 仍在手勢堆疊內
+          if (speakTimer) {
+            clearTimeout(speakTimer);
+            speakTimer = null;
+          }
+          try {
+            window.speechSynthesis.cancel();
+          } catch (_) {}
+          speakNow(t);
+        }
+      };
+      document.addEventListener('touchend', unlock, { once: true, passive: true });
+      document.addEventListener('click', unlock, { once: true });
+    }
+
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      } catch (_) {}
+    }
+    bindSpeechUnlockOnce();
 
     function currentLesson() {
       return lessons[state.s] || { title: '', sentences: [] };
@@ -668,15 +805,24 @@
       return /[，。！？、；：､,.!?;:“”‘’「」『』（）()【】《》〈〉…—～·\s]/.test(ch);
     }
 
-    /** 拆句：標點不當字庫；異體／破音用的 Variation Selector 併入前一字 */
+    function isLatinWordChar(ch) {
+      return /[A-Za-z0-9]/.test(ch);
+    }
+
+    function isLatinWordJoiner(ch) {
+      return ch === "'" || ch === '\u2019' || ch === '-';
+    }
+
+    /** 拆句：中文一字一顆；英文整詞一顆；標點／VS 不進字庫 */
     function splitSentence(sentence) {
       const out = [];
-      for (const ch of String(sentence || '')) {
+      const chars = Array.from(String(sentence || ''));
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i];
         if (isVariationSelector(ch)) {
           if (out.length) out[out.length - 1].ch += ch;
           continue;
         }
-        // 零寬／格式字元略過，避免空按鈕
         const cp = ch.codePointAt(0);
         if (
           cp === 0xfeff ||
@@ -687,12 +833,51 @@
         ) {
           continue;
         }
+
+        // 連續英數（含 don't、well-known）合成一個按鈕
+        if (isLatinWordChar(ch)) {
+          let word = ch;
+          while (i + 1 < chars.length) {
+            const next = chars[i + 1];
+            if (isVariationSelector(next)) {
+              word += next;
+              i++;
+              continue;
+            }
+            if (isLatinWordChar(next)) {
+              word += next;
+              i++;
+              continue;
+            }
+            if (
+              isLatinWordJoiner(next) &&
+              i + 2 < chars.length &&
+              isLatinWordChar(chars[i + 2])
+            ) {
+              word += next + chars[i + 2];
+              i += 2;
+              continue;
+            }
+            break;
+          }
+          out.push({ type: 'char', ch: word });
+          continue;
+        }
+
         out.push({
           type: isPunct(ch) ? 'punct' : 'char',
           ch
         });
       }
       return out.filter((p) => p.type === 'punct' || p.ch.replace(/\s/g, '').length > 0);
+    }
+
+    function visibleTokenLen(ch) {
+      return Array.from(String(ch || '')).filter((c) => !isVariationSelector(c)).length;
+    }
+
+    function tokenClassName(ch) {
+      return 'char' + (visibleTokenLen(ch) > 1 ? ' word' : '');
     }
 
     function charsOnly(parts) {
@@ -714,7 +899,7 @@
 
     function makePoolTile(ch, num, onClick) {
       const li = document.createElement('li');
-      li.className = 'char';
+      li.className = tokenClassName(ch);
       li.dataset.ch = ch;
       li.dataset.num = String(num);
       const badge = document.createElement('span');
@@ -808,7 +993,7 @@
       const expectedChars = charList.join('');
       if (!charList.length) {
         messageEl.textContent = '此句只有標點，沒有可重組的字。';
-        speakBtn.onclick = () => speak(sentence);
+        speakBtn.onclick = () => speakFromUserGesture(sentence);
         return;
       }
 
@@ -828,7 +1013,7 @@
             if (pi < placed.length) {
               const tile = placed[pi];
               const li = document.createElement('li');
-              li.className = 'char';
+              li.className = tokenClassName(tile.ch);
               li.dataset.ch = tile.ch;
               if (tile.num) li.dataset.num = String(tile.num);
               fillCharTile(li, tile.ch);
@@ -851,6 +1036,8 @@
       }
 
       function pickChar(e) {
+        // 點選備選字也算使用者手勢，順便解鎖 iPhone 語音
+        if (isIPhone && !speechUnlocked) unlockSpeech();
         const li = e.currentTarget;
         if (li.parentNode !== charsEl) return;
         const tile = { ch: li.dataset.ch || '', num: li.dataset.num || '' };
@@ -879,7 +1066,7 @@
 
       setCharGridCols(charList.length);
 
-      speakBtn.onclick = () => speak(sentence);
+      speakBtn.onclick = () => speakFromUserGesture(sentence);
       speak(sentence);
     }
 
@@ -953,7 +1140,7 @@
         answerEl.innerHTML = '';
         (parts || splitSentence(sentence)).forEach((p) => {
           const li = document.createElement('li');
-          li.className = p.type === 'punct' ? 'punct' : 'char';
+          li.className = p.type === 'punct' ? 'punct' : tokenClassName(p.ch);
           if (p.type === 'punct') li.textContent = p.ch;
           else fillCharTile(li, p.ch);
           answerEl.appendChild(li);
