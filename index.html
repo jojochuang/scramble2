@@ -148,27 +148,98 @@
     #message { color: red; font-weight: bold; margin-top: 8px; }
     #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; min-width: 140px; }
     #pwdBtn { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    #speakBtn { margin-bottom: 8px; }
+
+    /* 手機：控制列移到下方，遊戲區優先顯示 */
+    @media (max-width: 768px) {
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100dvh;
+        min-height: 100svh;
+        padding: 12px;
+        padding-bottom: 0;
+        box-sizing: border-box;
+      }
+      #gameMain {
+        order: 1;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      #chrome {
+        order: 2;
+        position: sticky;
+        bottom: 0;
+        z-index: 30;
+        margin: 0 -12px;
+        padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+        background: #f9f9f9;
+        border-top: 1px solid #ddd;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+      }
+      #controls {
+        margin-bottom: 8px;
+        gap: 8px;
+      }
+      .dropdown {
+        min-width: 0;
+        flex: 1 1 40%;
+        max-width: none;
+        margin-right: 0;
+      }
+      #stars {
+        margin: 0;
+        flex: 0 0 auto;
+      }
+      #pwdInput {
+        margin-left: 0;
+        width: auto;
+        min-width: 0;
+        flex: 1 1 120px;
+      }
+      #speakBtn {
+        width: 100%;
+        margin-bottom: 0;
+        padding: 10px;
+        font-size: 1.05rem;
+      }
+      /* 選單在底部時改向上展開 */
+      .dropdown-menu {
+        top: auto;
+        bottom: 100%;
+        max-height: min(40vh, 240px);
+      }
+      #chars {
+        min-height: 18vh;
+        margin-top: 0;
+        padding: 12px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div id="controls">
-    <div id="mainDropdown" class="dropdown">
-      <div id="mainToggle" class="dropdown-toggle">選擇分頁</div>
-      <div id="mainMenu" class="dropdown-menu"></div>
+  <div id="chrome">
+    <div id="controls">
+      <div id="mainDropdown" class="dropdown">
+        <div id="mainToggle" class="dropdown-toggle">選擇分頁</div>
+        <div id="mainMenu" class="dropdown-menu"></div>
+      </div>
+      <div id="subDropdown" class="dropdown">
+        <div id="subToggle" class="dropdown-toggle">選擇課文</div>
+        <div id="subMenu" class="dropdown-menu"></div>
+      </div>
+      <div id="stars">☆</div>
+      <input type="password" id="pwdInput" placeholder="教師請輸入密碼" />
+      <button id="pwdBtn">解鎖</button>
     </div>
-    <div id="subDropdown" class="dropdown">
-      <div id="subToggle" class="dropdown-toggle">選擇課文</div>
-      <div id="subMenu" class="dropdown-menu"></div>
-    </div>
-    <div id="stars">☆</div>
-    <input type="password" id="pwdInput" placeholder="教師請輸入密碼" />
-    <button id="pwdBtn">解鎖</button>
+    <button id="speakBtn">🔊 播放句子</button>
   </div>
 
-  <button id="speakBtn">🔊 播放句子</button>
-  <ul id="chars"></ul>
-  <div id="answer"></div>
-  <div id="message"></div>
+  <div id="gameMain">
+    <ul id="chars"></ul>
+    <div id="answer"></div>
+    <div id="message"></div>
+  </div>
 
   <script>
     const SHEET_ID = '1aVqFdHihHACMEmFScqDIoOzCIIFkXHHUleXvrLPm99Q';
