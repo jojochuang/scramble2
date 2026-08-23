@@ -239,6 +239,52 @@
       if (state.m < 0 || state.m >= SHEETS.length) state.m = 0;
     }
 
+    /** ?book=1&lesson=2 或 ?book=美洲一&lesson=2（lesson/unit 從 1 起算） */
+    function parseDeepLink() {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const bookRaw = (p.get('book') || p.get('sheet') || '').trim();
+        const lessonRaw = p.get('lesson') || p.get('unit');
+        if (!bookRaw && !lessonRaw) return null;
+
+        let m = state.m;
+        if (bookRaw) {
+          const asNum = parseInt(bookRaw, 10);
+          if (!isNaN(asNum) && String(asNum) === bookRaw && asNum >= 1 && asNum <= SHEETS.length) {
+            m = asNum - 1;
+          } else {
+            const idx = SHEETS.findIndex((s) => s.name === bookRaw || s.gid === bookRaw);
+            if (idx >= 0) m = idx;
+            else return null;
+          }
+        }
+
+        let s = null;
+        if (lessonRaw != null && lessonRaw !== '') {
+          const n = parseInt(lessonRaw, 10);
+          if (isNaN(n) || n < 1) return null;
+          s = n - 1;
+        }
+        return { m, s };
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function syncDeepLinkUrl() {
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set('book', String(state.m + 1));
+        u.searchParams.set('lesson', String(state.s + 1));
+        u.searchParams.delete('sheet');
+        u.searchParams.delete('unit');
+        const next = u.pathname + u.search + u.hash;
+        if (next !== window.location.pathname + window.location.search + window.location.hash) {
+          window.history.replaceState({}, '', next);
+        }
+      } catch (_) {}
+    }
+
     function sheetCsvUrl(gid) {
       return (
         'https://docs.google.com/spreadsheets/d/' +
@@ -269,9 +315,10 @@
       return out;
     }
 
-    async function loadSheet(sheetIndex, keepLessonIndex) {
+    async function loadSheet(sheetIndex, keepLessonIndex, opts) {
       const sheet = SHEETS[sheetIndex];
       if (!sheet) return;
+      const forceLesson = !!(opts && opts.forceLesson);
       messageEl.textContent = '載入中…';
       messageEl.style.color = '#666';
       try {
@@ -288,7 +335,11 @@
         } else if (state.s >= lessons.length) {
           state.s = 0;
         }
-        if (!bypass && !unlockedLessons[state.m][state.s]) {
+        if (forceLesson) {
+          unlockedLessons[state.m][state.s] = true;
+          state.q = 0;
+          state.stars = [];
+        } else if (!bypass && !unlockedLessons[state.m][state.s]) {
           const firstOpen = unlockedLessons[state.m].findIndex(Boolean);
           state.s = firstOpen >= 0 ? firstOpen : 0;
           unlockedLessons[state.m][state.s] = true;
@@ -296,6 +347,7 @@
         state.q = Math.min(state.q || 0, Math.max(0, currentLesson().sentences.length - 1));
         resetStarsForLesson();
         saveState();
+        syncDeepLinkUrl();
         messageEl.textContent = '';
         messageEl.style.color = 'red';
         renderDropdowns();
@@ -354,6 +406,7 @@
           unlockedLessons[state.m][state.s] = true;
           resetStarsForLesson();
           saveState();
+          syncDeepLinkUrl();
           closeMenus();
           renderDropdowns();
           renderQuestion();
@@ -535,6 +588,7 @@
             resetStarsForLesson();
           }
           saveState();
+          syncDeepLinkUrl();
           closeMenus();
           renderDropdowns();
           renderQuestion();
@@ -576,7 +630,14 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       loadSavedState();
-      loadSheet(state.m, state.s);
+      const deep = parseDeepLink();
+      if (deep) {
+        state.m = deep.m;
+        if (deep.s != null) state.s = deep.s;
+        loadSheet(state.m, state.s, { forceLesson: deep.s != null });
+      } else {
+        loadSheet(state.m, state.s);
+      }
     });
   </script>
 </body>
