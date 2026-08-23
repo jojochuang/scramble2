@@ -658,15 +658,41 @@
       }
     }
 
+    function isVariationSelector(ch) {
+      const cp = ch.codePointAt(0);
+      // VS1–VS16 + IVS (VS17–VS256)
+      return (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef);
+    }
+
     function isPunct(ch) {
       return /[，。！？、；：､,.!?;:“”‘’「」『』（）()【】《》〈〉…—～·\s]/.test(ch);
     }
 
+    /** 拆句：標點不當字庫；異體／破音用的 Variation Selector 併入前一字 */
     function splitSentence(sentence) {
-      return Array.from(String(sentence || '')).map((ch) => ({
-        type: isPunct(ch) ? 'punct' : 'char',
-        ch
-      }));
+      const out = [];
+      for (const ch of String(sentence || '')) {
+        if (isVariationSelector(ch)) {
+          if (out.length) out[out.length - 1].ch += ch;
+          continue;
+        }
+        // 零寬／格式字元略過，避免空按鈕
+        const cp = ch.codePointAt(0);
+        if (
+          cp === 0xfeff ||
+          cp === 0x200b ||
+          cp === 0x200c ||
+          cp === 0x200d ||
+          cp === 0x2060
+        ) {
+          continue;
+        }
+        out.push({
+          type: isPunct(ch) ? 'punct' : 'char',
+          ch
+        });
+      }
+      return out.filter((p) => p.type === 'punct' || p.ch.replace(/\s/g, '').length > 0);
     }
 
     function charsOnly(parts) {
@@ -778,8 +804,9 @@
       }
 
       const parts = splitSentence(sentence);
-      const expectedChars = charsOnly(parts);
-      if (!expectedChars.length) {
+      const charList = parts.filter((p) => p.type === 'char').map((p) => p.ch);
+      const expectedChars = charList.join('');
+      if (!charList.length) {
         messageEl.textContent = '此句只有標點，沒有可重組的字。';
         speakBtn.onclick = () => speak(sentence);
         return;
@@ -830,7 +857,7 @@
         const placed = placedTilesFromAnswer().concat([tile]);
         li.remove();
         renderAnswerFromPlaced(placed);
-        if (placed.length === expectedChars.length) checkAnswer(parts, expectedChars);
+        if (placed.length === charList.length) checkAnswer(parts, expectedChars);
       }
 
       function returnAllCharsToPool() {
@@ -845,11 +872,12 @@
       renderQuestion._returnAllCharsToPool = returnAllCharsToPool;
       renderQuestion._pickChar = pickChar;
 
-      shuffle(expectedChars.split('')).forEach((ch, i) => {
+      // 不可用 split('')：破音／異體 Variation Selector 會被拆成空白按鈕
+      shuffle(charList.slice()).forEach((ch, i) => {
         charsEl.appendChild(makePoolTile(ch, i + 1, pickChar));
       });
 
-      setCharGridCols(expectedChars.length);
+      setCharGridCols(charList.length);
 
       speakBtn.onclick = () => speak(sentence);
       speak(sentence);
