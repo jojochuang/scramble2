@@ -54,13 +54,21 @@
     .dropdown-item { padding: 8px; cursor: pointer; }
     .dropdown-item:hover { background: #f0f0f0; }
     #controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 0; margin-bottom: 16px; }
+    #stars {
+      font-size: 1.5rem;
+      color: gold;
+      margin: 0 12px 0 4px;
+      white-space: nowrap;
+      letter-spacing: 0.08em;
+      line-height: 1;
+    }
     #chars {
       border: 2px dashed #007BFF;
       padding: 20px;
       min-height: 22vh;
       border-radius: 8px;
       display: grid;
-      grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr));
+      grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
       gap: 14px 16px;
       justify-items: stretch;
       align-content: center;
@@ -92,11 +100,23 @@
       user-select: none;
     }
     #chars li {
+      position: relative;
       font-size: clamp(2.8rem, 6.2vw, 5.5rem);
       min-height: 1.35em;
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    #chars li .num {
+      position: absolute;
+      top: 0.2em;
+      left: 0.28em;
+      font-size: clamp(0.85rem, 1.6vw, 1.25rem);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      font-weight: 700;
+      line-height: 1;
+      opacity: 0.95;
+      pointer-events: none;
     }
     #answer li {
       font-size: clamp(2rem, 4.2vw, 3.6rem);
@@ -109,7 +129,6 @@
       padding: 0.35em 0.2em;
       font-weight: 700;
     }
-    #stars { font-size: 1.5rem; color: gold; margin: 16px 0; }
     #message { color: red; font-weight: bold; margin-top: 8px; }
     #pwdInput { margin-left: auto; padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 33%; min-width: 140px; }
     #pwdBtn { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
@@ -125,12 +144,12 @@
       <div id="subToggle" class="dropdown-toggle">選擇課文</div>
       <div id="subMenu" class="dropdown-menu"></div>
     </div>
+    <div id="stars">☆</div>
     <input type="password" id="pwdInput" placeholder="教師請輸入密碼" />
     <button id="pwdBtn">解鎖</button>
   </div>
 
   <button id="speakBtn">🔊 播放句子</button>
-  <div id="stars">☆</div>
   <ul id="chars"></ul>
   <div id="answer"></div>
   <div id="message"></div>
@@ -495,7 +514,42 @@
     }
 
     function placedCharsFromAnswer() {
-      return Array.from(answerEl.querySelectorAll('li.char')).map((el) => el.textContent);
+      return Array.from(answerEl.querySelectorAll('li.char')).map(
+        (el) => el.dataset.ch || el.textContent
+      );
+    }
+
+    function placedTilesFromAnswer() {
+      return Array.from(answerEl.querySelectorAll('li.char')).map((el) => ({
+        ch: el.dataset.ch || el.textContent,
+        num: el.dataset.num || ''
+      }));
+    }
+
+    function makePoolTile(ch, num, onClick) {
+      const li = document.createElement('li');
+      li.className = 'char';
+      li.dataset.ch = ch;
+      li.dataset.num = String(num);
+      const badge = document.createElement('span');
+      badge.className = 'num';
+      badge.textContent = String(num);
+      li.appendChild(badge);
+      li.appendChild(document.createTextNode(ch));
+      li.onclick = onClick;
+      return li;
+    }
+
+    function setCharGridCols(n) {
+      const landscape = window.matchMedia('(orientation: landscape)').matches;
+      let cols;
+      if (landscape) {
+        cols = Math.min(4, Math.max(1, n));
+      } else {
+        const rows = n <= 4 ? 1 : n <= 10 ? 2 : 3;
+        cols = Math.max(1, Math.ceil(n / rows));
+      }
+      charsEl.style.setProperty('--cols', String(cols));
     }
 
     function renderQuestion() {
@@ -538,20 +592,19 @@
             }
           } else {
             if (pi < placed.length) {
+              const tile = placed[pi];
               const li = document.createElement('li');
               li.className = 'char';
-              li.textContent = placed[pi];
+              li.dataset.ch = tile.ch;
+              if (tile.num) li.dataset.num = String(tile.num);
+              li.textContent = tile.ch;
               const myIndex = pi;
               li.onclick = () => {
-                const cur = placedCharsFromAnswer();
+                const cur = placedTilesFromAnswer();
                 const keep = cur.slice(0, myIndex);
                 const removed = cur.slice(myIndex);
-                removed.forEach((ch) => {
-                  const back = document.createElement('li');
-                  back.className = 'char';
-                  back.textContent = ch;
-                  back.onclick = pickChar;
-                  charsEl.appendChild(back);
+                removed.forEach((item) => {
+                  charsEl.appendChild(makePoolTile(item.ch, item.num || '?', pickChar));
                 });
                 renderAnswerFromPlaced(keep);
               };
@@ -566,21 +619,18 @@
       function pickChar(e) {
         const li = e.currentTarget;
         if (li.parentNode !== charsEl) return;
-        const placed = placedCharsFromAnswer().concat([li.textContent]);
+        const tile = { ch: li.dataset.ch || '', num: li.dataset.num || '' };
+        const placed = placedTilesFromAnswer().concat([tile]);
         li.remove();
         renderAnswerFromPlaced(placed);
         if (placed.length === expectedChars.length) checkAnswer(parts, expectedChars);
       }
 
       function returnAllCharsToPool() {
-        const removed = placedCharsFromAnswer();
+        const removed = placedTilesFromAnswer();
         answerEl.innerHTML = '';
-        removed.forEach((ch) => {
-          const back = document.createElement('li');
-          back.className = 'char';
-          back.textContent = ch;
-          back.onclick = pickChar;
-          charsEl.appendChild(back);
+        removed.forEach((item) => {
+          charsEl.appendChild(makePoolTile(item.ch, item.num || '?', pickChar));
         });
       }
 
@@ -588,19 +638,11 @@
       renderQuestion._returnAllCharsToPool = returnAllCharsToPool;
       renderQuestion._pickChar = pickChar;
 
-      shuffle(expectedChars.split('')).forEach((ch) => {
-        const li = document.createElement('li');
-        li.className = 'char';
-        li.textContent = ch;
-        li.onclick = pickChar;
-        charsEl.appendChild(li);
+      shuffle(expectedChars.split('')).forEach((ch, i) => {
+        charsEl.appendChild(makePoolTile(ch, i + 1, pickChar));
       });
 
-      // 大螢幕：依字數排成約 2～3 行
-      const n = expectedChars.length;
-      const rows = n <= 4 ? 1 : n <= 10 ? 2 : 3;
-      const cols = Math.max(2, Math.ceil(n / rows));
-      charsEl.style.setProperty('--cols', String(cols));
+      setCharGridCols(expectedChars.length);
 
       speakBtn.onclick = () => speak(sentence);
       speak(sentence);
@@ -654,12 +696,10 @@
         if (typeof renderQuestion._returnAllCharsToPool === 'function') {
           renderQuestion._returnAllCharsToPool();
         } else {
-          Array.from(answerEl.querySelectorAll('li.char')).forEach((li) => {
-            const back = document.createElement('li');
-            back.className = 'char';
-            back.textContent = li.textContent;
-            back.onclick = renderQuestion._pickChar;
-            charsEl.appendChild(back);
+          Array.from(answerEl.querySelectorAll('li.char')).forEach((li, i) => {
+            const ch = li.dataset.ch || li.textContent;
+            const num = li.dataset.num || String(i + 1);
+            charsEl.appendChild(makePoolTile(ch, num, renderQuestion._pickChar));
           });
           answerEl.innerHTML = '';
         }
@@ -693,6 +733,11 @@
       } else {
         loadSheet(state.m, state.s);
       }
+    });
+
+    window.addEventListener('resize', () => {
+      const n = charsEl.querySelectorAll('li.char').length + answerEl.querySelectorAll('li.char').length;
+      if (n) setCharGridCols(n);
     });
   </script>
 </body>
