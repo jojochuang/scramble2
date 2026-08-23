@@ -208,6 +208,74 @@
         padding: 12px;
       }
     }
+
+    /* 答對讚手勢（參考 typo correct） */
+    .feedback-fx {
+      position: fixed;
+      left: 50%;
+      top: 40%;
+      z-index: 80;
+      transform: translate(-50%, -50%);
+      font-size: clamp(4.5rem, 22vw, 8rem);
+      line-height: 1;
+      pointer-events: none;
+      text-shadow: 0 0.08em 0.2em rgba(0, 0, 0, 0.35);
+      animation: feedback-thumb-pop 0.5s ease-out;
+    }
+    .feedback-fx.hidden { display: none; }
+    .feedback-fx--ok {
+      filter: drop-shadow(0 0 0.2em rgba(46, 125, 50, 0.9));
+    }
+    @keyframes feedback-thumb-pop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+      55% { transform: translate(-50%, -50%) scale(1.12); }
+      100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+
+    /* 整課完成橫幅 */
+    .lesson-complete {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5%;
+      background: rgba(0, 0, 0, 0.45);
+      pointer-events: auto;
+    }
+    .lesson-complete.hidden { display: none; }
+    .lesson-complete__panel {
+      width: min(94%, 28em);
+      text-align: center;
+    }
+    .lesson-complete__banner {
+      margin: 0;
+      padding: 0.75em 0.6em;
+      font-size: clamp(2rem, 9vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.2;
+      color: #fff8e1;
+      text-shadow:
+        0 0 0.35em rgba(255, 193, 7, 0.9),
+        0 2px 8px rgba(0, 0, 0, 0.55);
+      background: linear-gradient(135deg, rgba(255, 152, 0, 0.92) 0%, rgba(245, 124, 0, 0.95) 45%, rgba(230, 81, 0, 0.92) 100%);
+      border-radius: 0.35em;
+      box-shadow: 0 0.25em 1em rgba(0, 0, 0, 0.35);
+      animation: lesson-complete-pop 0.55s ease-out;
+    }
+    .lesson-complete__sub {
+      margin: 0.85em 0 0;
+      color: #fff;
+      font-size: clamp(1.1rem, 4vw, 1.5rem);
+      font-weight: 700;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.45);
+    }
+    @keyframes lesson-complete-pop {
+      0% { opacity: 0; transform: scale(0.85) translateY(0.5em); }
+      70% { transform: scale(1.04) translateY(0); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -233,6 +301,15 @@
     <ul id="chars"></ul>
     <div id="answer"></div>
     <div id="message"></div>
+  </div>
+
+
+  <div id="feedbackFx" class="feedback-fx hidden" aria-hidden="true"></div>
+  <div id="lessonCompleteOverlay" class="lesson-complete hidden" role="dialog" aria-labelledby="lessonCompleteTitle">
+    <div class="lesson-complete__panel">
+      <p id="lessonCompleteTitle" class="lesson-complete__banner">You did it!</p>
+      <p class="lesson-complete__sub">你做到了！</p>
+    </div>
   </div>
 
   <script>
